@@ -7,12 +7,13 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.header.writers.StaticHeadersWriter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -29,23 +30,26 @@ public class WebSecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .headers()
-                .addHeaderWriter(new StaticHeadersWriter("Content-Security-Policy", "default-src 'self'; script-src 'self' https://trusted-scripts.com; style-src 'self' https://trusted-styles.com"))
-                .addHeaderWriter(new StaticHeadersWriter("X-Content-Type-Options", "nosniff"))
-                .addHeaderWriter(new StaticHeadersWriter("X-Frame-Options", "deny"))
-                .addHeaderWriter(new StaticHeadersWriter("Referrer-Policy", "strict-origin-when-cross-origin"))
-                .addHeaderWriter(new StaticHeadersWriter("Feature-Policy", "geolocation 'none'; microphone 'none'"))
-                .and()
                 .cors(cors -> cors
                         .configurationSource(corsConfigurationSource())
                 )
-                .csrf().and()
-                .authorizeRequests((authorize) -> authorize
-                        .antMatchers("/api/auth/**", "/api/public/**", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/webjars/**", "/v3/api-docs/swagger-config").permitAll()
+                .csrf(AbstractHttpConfigurer::disable) // Deshabilitar CSRF si usas JWT
+                .headers(headers ->
+                        headers
+                                .contentSecurityPolicy("default-src 'self'; script-src 'self' https://trusted-scripts.com; style-src 'self' https://trusted-styles.com")
+                                .and()
+                                .frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin)
+                                .httpStrictTransportSecurity(hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31536000))
+                                .xssProtection(xss -> xss.block(true))
+                                .cacheControl(HeadersConfigurer.CacheControlConfig::disable)
+                                .contentSecurityPolicy("frame-ancestors 'self'; form-action 'self';")
+                )
+                .authorizeRequests(authorize -> authorize
+                        .antMatchers("/cliente/*", "/swagger-ui.html", "/swagger-ui/*", "/v3/api-docs", "/webjars/*", "/v3/api-docs/swagger-config").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class)
-                .sessionManagement((session) -> session
+                .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 );
         return http.build();
